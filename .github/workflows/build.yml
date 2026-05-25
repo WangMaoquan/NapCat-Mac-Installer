@@ -1,0 +1,73 @@
+name: Build NapCat Installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app
+          xcodebuild -version
+
+      - name: Build NapCat Installer
+        run: |
+          xcodebuild -project NapCatInstaller.xcodeproj \
+            -target NapCatInstaller \
+            -configuration Release \
+            -sdk macosx \
+            -derivedDataPath build/DerivedData \
+            build CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+          cp -R build/DerivedData/Build/Products/Release/NapCatInstaller.app ./
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NapCatInstaller.app
+          path: NapCatInstaller.app
+          retention-days: 30
+
+      - name: Create .dmg
+        run: |
+          mkdir -p build/dmg-root/.background
+          cp -R NapCatInstaller.app build/dmg-root/
+          ln -s /Applications build/dmg-root/Applications
+          hdiutil create \
+            -volname "NapCatInstaller" \
+            -srcfolder build/dmg-root \
+            -ov \
+            -format UDZO \
+            build/NapCatInstaller.dmg
+
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NapCatInstaller.dmg
+          path: build/NapCatInstaller.dmg
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "NapCat Installer v${{ github.run_number }}"
+          tag_name: "build-${{ github.run_id }}"
+          files: |
+            NapCatInstaller.app
+            build/NapCatInstaller.dmg
+          body: |
+            ## NapCat Installer Build
+            - Built from ${{ github.sha }}
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
